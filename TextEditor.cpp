@@ -317,7 +317,7 @@ void TextEditor::AddUndo(UndoRecord& aValue)
 	//	aValue.mAfter.mCursorPosition.mLine, aValue.mAfter.mCursorPosition.mColumn
 	//	);
 
-	mUndoBuffer.resize((size_t)(mUndoIndex + 1));
+	mUndoBuffer.resize((size_t)mUndoIndex + 1);
 	mUndoBuffer.back() = aValue;
 	++mUndoIndex;
 
@@ -2522,7 +2522,7 @@ TextEditor::UndoRecord::UndoRecord(
 	assert(mRemovedStart <= mRemovedEnd);
 }
 
-TextEditor::UndoRecord::UndoRecord(UndoRecord& undoRecord)
+TextEditor::UndoRecord::UndoRecord(const UndoRecord& undoRecord)
 	: mAdded(undoRecord.mAdded)
 	, mAddedStart(undoRecord.mAddedStart)
 	, mAddedEnd(undoRecord.mAddedEnd)

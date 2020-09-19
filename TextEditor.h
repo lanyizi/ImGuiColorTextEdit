@@ -207,7 +207,7 @@ public:
 			TextEditor::EditorState& aBefore,
 			TextEditor::EditorState& aAfter);
 
-		UndoRecord(UndoRecord& undoRecord);
+		UndoRecord(const UndoRecord& undoRecord);
 
 		void Undo(TextEditor* aEditor);
 		void Redo(TextEditor* aEditor);
