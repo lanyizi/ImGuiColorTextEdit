@@ -183,6 +183,9 @@ public:
 		static const LanguageDefinition& SQL();
 		static const LanguageDefinition& AngelScript();
 		static const LanguageDefinition& Lua();
+		static const LanguageDefinition& Lua4();
+		
+		static LanguageDefinition CreateLua4();
 	};
 
 	struct EditorState
