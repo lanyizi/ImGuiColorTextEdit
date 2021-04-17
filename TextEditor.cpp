@@ -18,8 +18,7 @@
 #define MSVC_WARNINGS								\
 	4244 /* toupper int -> char truncation */		\
 	4018 /* comparison signed/unsigned mismatch */	\
-	4389 /* same as above */						\
-	4100 /* unused function parameter */
+	4389 /* same as above */
 
 #pragma warning(push)
 #pragma warning(disable: MSVC_WARNINGS)
@@ -1575,7 +1574,10 @@ void TextEditor::InsertText(const char * aValue, bool aSelect)
 
 	totalLines += InsertTextAt(pos, aValue);
 
-	SetSelection( std::min(u.mBefore.mSelectionStart, u.mBefore.mCursorPosition) , pos);
+	if (aSelect)
+	{
+		SetSelection(std::min(u.mBefore.mSelectionStart, u.mBefore.mCursorPosition), pos);
+	}
 	SetCursorPosition(pos);
 	Colorize(start.mLine - 1, totalLines + 2);
 
