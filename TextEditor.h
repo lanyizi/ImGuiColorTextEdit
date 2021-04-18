@@ -8,6 +8,7 @@
 #include <unordered_map>
 #include <map>
 #include <regex>
+#include <functional>
 #include "imgui.h"
 
 class TextEditor
@@ -171,6 +172,8 @@ public:
 
 		bool mCaseSensitive;
 
+		std::function<bool(ImVector<ImWchar> const&)> mAutoCompleteConfirmation;
+
 		LanguageDefinition()
 			: mPreprocChar('#'), mAutoIndentation(true), mTokenize(nullptr), mCaseSensitive(true)
 		{
@@ -280,6 +283,9 @@ public:
 	inline void SetHandleKeyboardInputs (bool aValue){ mHandleKeyboardInputs = aValue;}
 	inline bool IsHandleKeyboardInputsEnabled() const { return mHandleKeyboardInputs; }
 
+	inline void SetAutoCompleteEnabled	(bool aValue){ mUseAutoComplete = aValue; }
+	inline bool IsAutoCompleteEnabled() const { return mUseAutoComplete; }
+
 	inline void SetImGuiChildIgnored    (bool aValue){ mIgnoreImGuiChild     = aValue;}
 	inline bool IsImGuiChildIgnored() const { return mIgnoreImGuiChild; }
 
@@ -363,6 +369,14 @@ private:
 	std::string GetWordUnderCursor() const;
 	std::string GetWordAt(const Coordinates& aCoords) const;
 	ImU32 GetGlyphColor(const Glyph& aGlyph) const;
+	bool IsAutoCompleting() const;
+	void ChangeAutoCompleteIndex(int offset);
+	void HandleAutoCompletionApply();
+	void StartAutoComplete(Coordinates currentWordBegin);
+	void UpdateAutoComplete();
+	void AbortAutoComplete();
+	void RequestAutoCompletionApply();
+	void DrawAutoComplete(ImVec2 position);
 
 	void HandleKeyboardInputs();
 	void HandleMouseInputs();
@@ -409,4 +423,19 @@ private:
 	uint64_t mStartTime;
 
 	float mLastClick;
+
+	bool mUseAutoComplete = false;
+	enum class AutoCompleteStatus
+	{
+		Inactive,
+		Active,
+		Completing,
+	} mAutoCompleteStatus = AutoCompleteStatus::Inactive;
+	bool mReceivedKeyboardCharacterInput = false;
+	bool mAutoCompleteNeedAutoScroll = false;
+	Coordinates mCurrentWordBegin;
+	Coordinates mAutoCompleteBegin;
+	std::string mCurrentWordOfPreviousFrame;
+	std::size_t mAutoCompleteIndex = 0;
+	std::vector<std::string> mAutoCompleteSuggestions;
 };

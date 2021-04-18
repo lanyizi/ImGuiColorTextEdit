@@ -725,7 +725,7 @@ ImU32 TextEditor::GetGlyphColor(const Glyph & aGlyph) const
 
 void TextEditor::HandleKeyboardInputs()
 {
-	if (ImGui::IsWindowFocused())
+	if (ImGui::IsWindowFocused() || IsAutoCompleting())
 	{
 		if (ImGui::IsWindowHovered())
 			ImGui::SetMouseCursor(ImGuiMouseCursor_TextInput);
@@ -745,9 +745,11 @@ void TextEditor::HandleKeyboardInputs()
 		auto isCtrlOnly = ctrl && !alt && !shift && !super;
 		auto isShiftOnly = shift && !alt && !ctrl && !super;
 
+		auto isMaybeAutoCompleteInput = IsAutoCompleting() && !alt && !ctrl && !shift && !super;
+
 		io.WantCaptureKeyboard = true;
 		io.WantTextInput = true;
-
+		
 		if (!IsReadOnly() && isShortcut && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Z)))
 			Undo();
 		else if (!IsReadOnly() && isAltOnly && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Backspace)))
@@ -756,6 +758,12 @@ void TextEditor::HandleKeyboardInputs()
 			Redo();
 		else if (!IsReadOnly() && isShiftShortcut && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Z)))
 			Redo();
+		else if (isMaybeAutoCompleteInput && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_Enter)))
+			RequestAutoCompletionApply();
+		else if (isMaybeAutoCompleteInput && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_UpArrow)))
+			ChangeAutoCompleteIndex(-1);
+		else if (isMaybeAutoCompleteInput && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_DownArrow)))
+			ChangeAutoCompleteIndex(+1);
 		else if (!alt && !ctrl && !super && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_UpArrow)))
 			MoveUp(1, shift);
 		else if (!alt && !ctrl && !super && ImGui::IsKeyPressed(ImGui::GetKeyIndex(ImGuiKey_DownArrow)))
@@ -802,11 +810,23 @@ void TextEditor::HandleKeyboardInputs()
 			EnterCharacter('\t', shift);
 		if (!IsReadOnly() && !io.InputQueueCharacters.empty() && !ctrl && !super)
 		{
+			if (isMaybeAutoCompleteInput)
+			{
+				if (auto const& confirmChecker = mLanguageDefinition.mAutoCompleteConfirmation;
+					confirmChecker && confirmChecker(io.InputQueueCharacters))
+				{
+					RequestAutoCompletionApply();
+				}
+			}
+
 			for (int i = 0; i < io.InputQueueCharacters.Size; i++)
 			{
 				auto c = io.InputQueueCharacters[i];
 				if (c != 0 && (c == '\n' || c >= 32))
+				{
 					EnterCharacter(c, shift);
+					mReceivedKeyboardCharacterInput = true;
+				}
 			}
 			io.InputQueueCharacters.resize(0);
 		}
@@ -1048,6 +1068,13 @@ void TextEditor::Render()
 							mStartTime = timeEnd;
 					}
 				}
+
+				// Draw an autocomplete suggestion box
+				if (mUseAutoComplete)
+				{
+					auto cx = TextDistanceToLineStart(mState.mCursorPosition);
+					DrawAutoComplete({ textScreenPos.x + cx, lineStartScreenPos.y + mCharAdvance.y });
+				}
 			}
 
 			// Render colorized text
@@ -1200,6 +1227,7 @@ void TextEditor::Render(const char* aTitle, const ImVec2& aSize, bool aBorder)
 	if (!mIgnoreImGuiChild)
 		ImGui::BeginChild(aTitle, aSize, aBorder, ImGuiWindowFlags_HorizontalScrollbar | ImGuiWindowFlags_NoMove);
 
+	mReceivedKeyboardCharacterInput = false;
 	if (mHandleKeyboardInputs)
 	{
 		HandleKeyboardInputs();
@@ -1208,8 +1236,14 @@ void TextEditor::Render(const char* aTitle, const ImVec2& aSize, bool aBorder)
 
 	if (mHandleMouseInputs)
 		HandleMouseInputs();
+	
+	if (mUseAutoComplete)
+		HandleAutoCompletionApply();
 
 	ColorizeInternal();
+	// AutoComplete relies on FindWordStart, so it must be executed after tokenization
+	if (mUseAutoComplete)
+		UpdateAutoComplete();
 	Render();
 
 	if (mHandleKeyboardInputs)
@@ -3590,4 +3624,222 @@ auto TextEditor::LanguageDefinition::Lua4() -> LanguageDefinition const&
 {
 	static auto langDef = CreateLua4();
 	return langDef;
+}
+
+bool TextEditor::IsAutoCompleting() const
+{
+	if (!mUseAutoComplete)
+	{
+		return false;
+	}
+	return mAutoCompleteStatus == AutoCompleteStatus::Active;
+}
+
+void TextEditor::ChangeAutoCompleteIndex(int offset)
+{
+	auto const max = mAutoCompleteSuggestions.size();
+	if (max == 0)
+	{
+		mAutoCompleteIndex = 0;
+		return;
+	}
+	if (mAutoCompleteIndex == 0 && offset < 0)
+	{
+		mAutoCompleteIndex = 0;
+		return;
+	}
+	mAutoCompleteIndex = std::clamp(mAutoCompleteIndex + offset, 0u, max - 1);
+	mAutoCompleteNeedAutoScroll = true;
+}
+
+void TextEditor::HandleAutoCompletionApply()
+{
+	if (mAutoCompleteStatus != AutoCompleteStatus::Completing)
+	{
+		return;
+	}
+	mAutoCompleteStatus = AutoCompleteStatus::Inactive;
+	if (mAutoCompleteIndex >= mAutoCompleteSuggestions.size())
+	{
+		return;
+	}
+	auto const& text = mAutoCompleteSuggestions.at(mAutoCompleteIndex);
+	SetSelection(mAutoCompleteBegin, GetCursorPosition());
+	InsertText(text);
+	mCurrentWordOfPreviousFrame = text;
+}
+
+void TextEditor::StartAutoComplete(Coordinates currentWordBegin)
+{
+	switch (mAutoCompleteStatus)
+	{
+	case AutoCompleteStatus::Active:
+		// already active
+		return;
+	case AutoCompleteStatus::Inactive:
+		if (mAutoCompleteBegin == currentWordBegin)
+		{
+			if (GetWordAt(currentWordBegin).rfind(mCurrentWordOfPreviousFrame) == 0)
+			{
+				// basically still the same word, then keep inactive
+				return;
+			}
+		}
+
+		// become active
+		mAutoCompleteBegin = currentWordBegin;
+		mAutoCompleteStatus = AutoCompleteStatus::Active;
+		return;
+	default:
+		assert(0);
+	}
+}
+
+void TextEditor::UpdateAutoComplete()
+{
+	if (mReceivedKeyboardCharacterInput || IsTextChanged() || IsCursorPositionChanged())
+	{
+		auto cursor = GetCursorPosition();
+		// TODO: use IsOnWordBoundary()
+		mCurrentWordBegin = FindWordStart(cursor);
+		if (FindWordEnd(cursor) == cursor)
+		{
+			auto previousCharacter = cursor;
+			previousCharacter.mColumn = std::max(0, cursor.mColumn - 1);
+			auto const start = FindWordStart(previousCharacter);
+			if (FindWordEnd(start) == cursor)
+			{
+				mCurrentWordBegin = FindWordStart(previousCharacter);
+			}
+		}
+	}
+
+	if (mReceivedKeyboardCharacterInput)
+	{
+		StartAutoComplete(mCurrentWordBegin);
+	}
+
+	if (!IsAutoCompleting())
+	{
+		return;
+	}
+
+	if (HasSelection())
+	{
+		AbortAutoComplete();
+		return;
+	}
+
+	if (mCurrentWordBegin != mAutoCompleteBegin)
+	{
+		AbortAutoComplete();
+		return;
+	}
+
+	auto const currentWord = GetWordAt(mAutoCompleteBegin);
+	if (currentWord.empty())
+	{
+		AbortAutoComplete();
+		return;
+	}
+
+	if (mCurrentWordOfPreviousFrame != currentWord)
+	{
+		mCurrentWordOfPreviousFrame = currentWord;
+
+		mAutoCompleteIndex = 0; // TODO: keep selected item if possible
+		mAutoCompleteSuggestions.clear();
+		auto const isCurrentWordPrefixOf = [&currentWord](std::string_view s)
+		{
+			return s.rfind(currentWord, 0) != s.npos;
+		};
+		for (auto const& keyword : mLanguageDefinition.mKeywords)
+		{
+			if (isCurrentWordPrefixOf(keyword))
+			{
+				mAutoCompleteSuggestions.push_back(keyword);
+			}
+		}
+		for (auto const& [name, info] : mLanguageDefinition.mIdentifiers)
+		{
+			if (isCurrentWordPrefixOf(name))
+			{
+				mAutoCompleteSuggestions.push_back(name);
+			}
+		}
+
+		if (not mAutoCompleteSuggestions.empty())
+		{
+			// TODO: keep selected item if possible
+			mAutoCompleteIndex = 0;
+		}
+	}
+
+	if (mAutoCompleteSuggestions.empty())
+	{
+		AbortAutoComplete();
+		return;
+	}
+}
+
+void TextEditor::AbortAutoComplete()
+{
+	mAutoCompleteStatus = AutoCompleteStatus::Inactive;
+}
+
+void TextEditor::RequestAutoCompletionApply()
+{
+	mAutoCompleteStatus = AutoCompleteStatus::Completing;
+}
+
+void TextEditor::DrawAutoComplete(ImVec2 position)
+{
+	if (!IsAutoCompleting())
+	{
+		return;
+	}
+
+	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0);
+	ImGui::SetNextWindowPos(position);
+	auto const width = 200;
+	auto const height = mCharAdvance.y * std::min(6u, mAutoCompleteSuggestions.size() + 1);
+	ImGui::SetNextWindowSize({ width, height });
+
+	auto const flags =
+		ImGuiWindowFlags_NoTitleBar |
+		ImGuiWindowFlags_NoResize |
+		ImGuiWindowFlags_NoMove |
+		ImGuiWindowFlags_HorizontalScrollbar |
+		ImGuiWindowFlags_NoSavedSettings;
+	ImGui::Begin("Autocomplete suggstions", nullptr, flags);
+	ImGui::PushAllowKeyboardFocus(false);
+	if (!ImGui::IsWindowFocused())
+	{
+		AbortAutoComplete();
+	}
+	else
+	{
+		auto index = -1;
+		for (auto const& word : mAutoCompleteSuggestions)
+		{
+			++index;
+			auto const isSelected = index == mAutoCompleteIndex;
+			ImGui::Selectable(word.c_str(), isSelected);
+			if (ImGui::IsItemClicked())
+			{
+				mAutoCompleteIndex = index;
+				RequestAutoCompletionApply();
+			}
+			if (isSelected && mAutoCompleteNeedAutoScroll)
+			{
+				ImGui::SetScrollHereY();
+				mAutoCompleteNeedAutoScroll = false;
+			}
+		}
+	}
+	ImGui::Spacing();
+	ImGui::PopAllowKeyboardFocus();
+	ImGui::End();
+
+	ImGui::PopStyleVar(1);
 }
