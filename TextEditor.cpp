@@ -3819,7 +3819,7 @@ void TextEditor::DrawAutoComplete(ImVec2 position)
 	}
 	else
 	{
-		auto index = -1;
+		auto index = static_cast<std::size_t>(-1);
 		for (auto const& word : mAutoCompleteSuggestions)
 		{
 			++index;
