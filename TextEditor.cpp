@@ -3485,109 +3485,109 @@ const TextEditor::LanguageDefinition& TextEditor::LanguageDefinition::Lua()
 
 auto TextEditor::LanguageDefinition::CreateLua4() -> LanguageDefinition
 {
-    using namespace std::literals;
-    auto langDef = LanguageDefinition{};
+	using namespace std::literals;
+	auto langDef = LanguageDefinition{};
 
-    langDef.mKeywords =
-    {
-        "and", "break", "do", "else", "elseif", "end", "for", "function", "if",
-        "in", "local", "nil", "not", "or", "repeat", "return", "then", "until",
-        "while"
-    };
-    auto const builtInFunctions =
-    {
-        // base lib
-        "_ALERT"s, "_ERRORMESSAGE"s, "call"s, "collectgarbage"s,
-        "copytagmethods"s, "dofile"s, "dostring"s, "error"s, "foreach"s,
-        "foreachi"s, "gcinfo"s, "getglobal"s, "gettagmethod"s, "globals"s,
-        "newtag"s, "next"s, "print"s, "rawget"s, "rawset"s, "setglobal"s,
-        "settag"s,  "settagmethod"s, "tag"s, "tonumber"s, "tostring"s, "type"s,
-        "assert"s, "getn"s, "sort"s, "tinsert"s, "tremove"s,
-        // debug lib
-        "getlocal"s, "getinfo"s, "setcallhook"s, "setlinehook"s, "setlocal"s,
-        // io lib
-        "clock"s, "date"s, "debug"s, "execute"s, "exit"s, "getenv"s, "remove"s,
-        "rename"s, "setlocale"s, "tmpname"s, "appendto"s, "closefile"s,
-        "flush"s, "openfile"s, "read"s, "readfrom"s, "seek"s, "write"s,
-        "writeto"s,
-        // math lib
-        "abs"s, "sin"s, "cos"s, "tan"s, "asin"s, "acos"s, "atan"s, "atan2"s,
-        "ceil"s, "floor"s, "mod"s, "frexp"s, "ldexp"s, "sqrt"s, "min"s, "max"s,
-        "log"s, "log10"s, "exp"s, "deg"s, "rad"s, "random"s, "randomseed"s,
-        // string lib
-        "strlen"s, "strsub"s, "strlower"s, "strupper"s, "strchar"s, "strrep"s,
-        "strbyte"s, "format"s, "strfind"s, "gsub"s
-    };
+	langDef.mKeywords =
+	{
+		"and", "break", "do", "else", "elseif", "end", "for", "function", "if",
+		"in", "local", "nil", "not", "or", "repeat", "return", "then", "until",
+		"while"
+	};
+	auto const builtInFunctions =
+	{
+		// base lib
+		"_ALERT"s, "_ERRORMESSAGE"s, "call"s, "collectgarbage"s,
+		"copytagmethods"s, "dofile"s, "dostring"s, "error"s, "foreach"s,
+		"foreachi"s, "gcinfo"s, "getglobal"s, "gettagmethod"s, "globals"s,
+		"newtag"s, "next"s, "print"s, "rawget"s, "rawset"s, "setglobal"s,
+		"settag"s,  "settagmethod"s, "tag"s, "tonumber"s, "tostring"s, "type"s,
+		"assert"s, "getn"s, "sort"s, "tinsert"s, "tremove"s,
+		// debug lib
+		"getlocal"s, "getinfo"s, "setcallhook"s, "setlinehook"s, "setlocal"s,
+		// io lib
+		"clock"s, "date"s, "debug"s, "execute"s, "exit"s, "getenv"s, "remove"s,
+		"rename"s, "setlocale"s, "tmpname"s, "appendto"s, "closefile"s,
+		"flush"s, "openfile"s, "read"s, "readfrom"s, "seek"s, "write"s,
+		"writeto"s,
+		// math lib
+		"abs"s, "sin"s, "cos"s, "tan"s, "asin"s, "acos"s, "atan"s, "atan2"s,
+		"ceil"s, "floor"s, "mod"s, "frexp"s, "ldexp"s, "sqrt"s, "min"s, "max"s,
+		"log"s, "log10"s, "exp"s, "deg"s, "rad"s, "random"s, "randomseed"s,
+		// string lib
+		"strlen"s, "strsub"s, "strlower"s, "strupper"s, "strchar"s, "strrep"s,
+		"strbyte"s, "format"s, "strfind"s, "gsub"s
+	};
 
-    for (auto const& identifier : builtInFunctions)
-    {
-        langDef.mIdentifiers[identifier].mDeclaration = "Built-in functions";
-    }
-    langDef.mIdentifiers["PI"s].mDeclaration = "Built-in variable";
+	for (auto const& identifier : builtInFunctions)
+	{
+		langDef.mIdentifiers[identifier].mDeclaration = "Built-in functions";
+	}
+	langDef.mIdentifiers["PI"s].mDeclaration = "Built-in variable";
 
-    langDef.mTokenize = []
-    (
-        char const* inBegin, char const* inEnd,
-        char const*& outBegin, char const*& outEnd,
-        PaletteIndex& paletteIndex
-        )
-    {
-        paletteIndex = PaletteIndex::Max;
+	langDef.mTokenize = []
+	(
+		char const* inBegin, char const* inEnd,
+		char const*& outBegin, char const*& outEnd,
+		PaletteIndex& paletteIndex
+	)
+	{
+		paletteIndex = PaletteIndex::Max;
 
-        while (inBegin < inEnd && isascii(*inBegin) && isblank(*inBegin))
-        {
-            ++inBegin;
-        }
+		while (inBegin < inEnd && isascii(*inBegin) && isblank(*inBegin))
+		{
+			++inBegin;
+		}
 
-        decltype(&TokenizeLuaStyleString) tokenizeEmpty = []
-        (
-            char const* inBegin, char const* inEnd,
-            char const*& outBegin, char const*& outEnd
-            )
-        {
-            if (inBegin == inEnd)
-            {
-                outBegin = inEnd;
-                outEnd = inEnd;
-                return true;
-            }
-            return false;
-        };
+		decltype(&TokenizeLuaStyleString) tokenizeEmpty = []
+		(
+			char const* inBegin, char const* inEnd,
+			char const*& outBegin, char const*& outEnd
+		)
+		{
+			if (inBegin == inEnd)
+			{
+				outBegin = inEnd;
+				outEnd = inEnd;
+				return true;
+			}
+			return false;
+		};
 
-        auto const list =
-        {
-            std::pair{tokenizeEmpty, PaletteIndex::Default},
-            std::pair{TokenizeLuaStyleString, PaletteIndex::String},
-            std::pair{TokenizeLuaStyleIdentifier, PaletteIndex::Identifier},
-            std::pair{TokenizeLuaStyleNumber, PaletteIndex::Number},
-            std::pair{TokenizeLuaStyleNumber, PaletteIndex::Punctuation},
-        };
-        for (auto const [tokenizer, tokenPalette] : list)
-        {
-            if (tokenizer(inBegin, inEnd, outBegin, outEnd))
-            {
-                paletteIndex = tokenPalette;
-                return true;
-            }
-        }
+		auto const list =
+		{
+			std::pair{tokenizeEmpty, PaletteIndex::Default},
+			std::pair{TokenizeLuaStyleString, PaletteIndex::String},
+			std::pair{TokenizeLuaStyleIdentifier, PaletteIndex::Identifier},
+			std::pair{TokenizeLuaStyleNumber, PaletteIndex::Number},
+			std::pair{TokenizeLuaStyleNumber, PaletteIndex::Punctuation},
+		};
+		for (auto const [tokenizer, tokenPalette] : list)
+		{
+			if (tokenizer(inBegin, inEnd, outBegin, outEnd))
+			{
+				paletteIndex = tokenPalette;
+				return true;
+			}
+		}
 
-        return false;
-    };
+		return false;
+	};
 
-    langDef.mSingleLineComment = "--";
-    // lua 4 does not support block comments
-    langDef.mCommentStart = "??ddZjy35BsQFI0n8D";
-    langDef.mCommentEnd = "??VIpjDPMCzoHGt6ET";
+	langDef.mSingleLineComment = "--";
+	// lua 4 does not support block comments
+	langDef.mCommentStart = "??ddZjy35BsQFI0n8D";
+	langDef.mCommentEnd = "??VIpjDPMCzoHGt6ET";
 
-    langDef.mCaseSensitive = true;
-    langDef.mAutoIndentation = true;
+	langDef.mCaseSensitive = true;
+	langDef.mAutoIndentation = true;
 
-    langDef.mName = "Lua4";
-    return langDef;
+	langDef.mName = "Lua4";
+	return langDef;
 }
 
 auto TextEditor::LanguageDefinition::Lua4() -> LanguageDefinition const&
 {
-    static auto langDef = CreateLua4();
-    return langDef;
+	static auto langDef = CreateLua4();
+	return langDef;
 }
