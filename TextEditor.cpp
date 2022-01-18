@@ -3773,31 +3773,46 @@ void TextEditor::UpdateAutoComplete()
 	{
 		mCurrentWordOfPreviousFrame = currentWord;
 
-		mAutoCompleteIndex = 0; // TODO: keep selected item if possible
+		auto currentlySelected = mAutoCompleteIndex < mAutoCompleteSuggestions.size()
+			? std::move(mAutoCompleteSuggestions[mAutoCompleteIndex])
+			: std::string{};
+		mAutoCompleteIndex = 0;
 		mAutoCompleteSuggestions.clear();
-		auto const isCurrentWordPrefixOf = [&currentWord](std::string_view s)
-		{
-			return s.rfind(currentWord, 0) != s.npos;
-		};
+		auto keyWords = std::vector<std::string_view>{};
+		auto identifiers = std::vector<std::string_view>{};
 		for (auto const& keyword : mLanguageDefinition.mKeywords)
 		{
-			if (isCurrentWordPrefixOf(keyword))
+			if (keyword.starts_with(currentWord))
 			{
-				mAutoCompleteSuggestions.push_back(keyword);
+				keyWords.push_back(keyword);
 			}
 		}
 		for (auto const& [name, info] : mLanguageDefinition.mIdentifiers)
 		{
-			if (isCurrentWordPrefixOf(name))
+			if (name.starts_with(currentWord))
 			{
-				mAutoCompleteSuggestions.push_back(name);
+				identifiers.push_back(name);
 			}
 		}
+		std::sort(keyWords.begin(), keyWords.end());
+		std::sort(identifiers.begin(), identifiers.end());
+		mAutoCompleteSuggestions.resize(keyWords.size() + identifiers.size());
+		auto const next = std::copy_n(keyWords.begin(), keyWords.size(), mAutoCompleteSuggestions.begin());
+		std::copy_n(identifiers.begin(), identifiers.size(), next);
 
 		if (not mAutoCompleteSuggestions.empty())
 		{
-			// TODO: keep selected item if possible
 			mAutoCompleteIndex = 0;
+			if (currentlySelected.starts_with(currentWord))
+			{
+				for (auto const& suggestion : mAutoCompleteSuggestions)
+				{
+					if (suggestion == currentlySelected)
+					{
+						mAutoCompleteIndex = &suggestion - &mAutoCompleteSuggestions.at(0);
+					}
+				}
+			}
 		}
 	}
 
