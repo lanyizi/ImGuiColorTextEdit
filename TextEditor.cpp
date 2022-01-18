@@ -2901,57 +2901,70 @@ static bool TokenizeCStylePunctuation(const char * in_begin, const char * in_end
 	return false;
 }
 
-static bool TokenizeLuaStyleString(const char * in_begin, const char * in_end, const char *& out_begin, const char *& out_end)
+static bool TokenizeLuaStyleString(const char * in_begin, const char * in_end, const char *& out_begin, const char *& out_end, bool& unfinished_double_square_brackets)
 {
 	const char * p = in_begin;
 
 	bool is_single_quote = false;
 	bool is_double_quotes = false;
-	bool is_double_square_brackets = false;
+	bool is_double_square_brackets = unfinished_double_square_brackets;
 
-	switch (*p)
+	if (!is_double_square_brackets)
 	{
-	case '\'':
-		is_single_quote = true;
-		break;
-	case '"':
-		is_double_quotes = true;
-		break;
-	case '[':
+		switch (*p)
+		{
+		case '\'':
+			is_single_quote = true;
+			break;
+		case '"':
+			is_double_quotes = true;
+			break;
+		case '[':
+			p++;
+			if (p < in_end && *(p) == '[')
+				is_double_square_brackets = true;
+			break;
+		default:
+			return false;
+		}
+
 		p++;
-		if (p < in_end && *(p) == '[')
-			is_double_square_brackets = true;
-		break;
 	}
 
-	if (is_single_quote || is_double_quotes || is_double_square_brackets)
+	while (p < in_end)
 	{
-		p++;
-
-		while (p < in_end)
+		// handle end of string
+		if ((is_single_quote && *p == '\'') || (is_double_quotes && *p == '"') || (is_double_square_brackets && *p == ']' && p + 1 < in_end && *(p + 1) == ']'))
 		{
-			// handle end of string
-			if ((is_single_quote && *p == '\'') || (is_double_quotes && *p == '"') || (is_double_square_brackets && *p == ']' && p + 1 < in_end && *(p + 1) == ']'))
+			out_begin = in_begin;
+			if (is_double_square_brackets)
 			{
-				out_begin = in_begin;
-
-				if (is_double_square_brackets)
-					out_end = p + 2;
-				else
-					out_end = p + 1;
-
-				return true;
+				out_end = p + 2;
+				unfinished_double_square_brackets = false;
 			}
+			else
+			{
+				out_end = p + 1;
+			}
+			return true;
+		}
 
-			// handle escape character for "
-			if (*p == '\\' && p + 1 < in_end && (is_single_quote || is_double_quotes))
-				p++;
-
+		// handle escape character for "
+		if (*p == '\\' && p + 1 < in_end && (is_single_quote || is_double_quotes))
+		{
 			p++;
 		}
+
+		p++;
 	}
 
-	return false;
+	if (is_double_square_brackets)
+	{
+		unfinished_double_square_brackets = true;
+	}
+	out_begin = in_begin;
+	out_end = in_end;
+	return true;
 }
 
 static bool TokenizeLuaStyleIdentifier(const char * in_begin, const char * in_end, const char *& out_begin, const char *& out_end)
@@ -3474,7 +3487,12 @@ const TextEditor::LanguageDefinition& TextEditor::LanguageDefinition::Lua()
 			langDef.mIdentifiers.insert(std::make_pair(std::string(k), id));
 		}
 
-		langDef.mTokenize = [](const char * in_begin, const char * in_end, const char *& out_begin, const char *& out_end, PaletteIndex & paletteIndex) -> bool
+		langDef.mTokenize = [in_string = false]
+		(
+			const char * in_begin, const char * in_end,
+			const char *& out_begin, const char *& out_end,
+			PaletteIndex & paletteIndex
+		) mutable -> bool
 		{
 			paletteIndex = PaletteIndex::Max;
 
@@ -3487,7 +3505,7 @@ const TextEditor::LanguageDefinition& TextEditor::LanguageDefinition::Lua()
 				out_end = in_end;
 				paletteIndex = PaletteIndex::Default;
 			}
-			else if (TokenizeLuaStyleString(in_begin, in_end, out_begin, out_end))
+			else if (TokenizeLuaStyleString(in_begin, in_end, out_begin, out_end, in_string))
 				paletteIndex = PaletteIndex::String;
 			else if (TokenizeLuaStyleIdentifier(in_begin, in_end, out_begin, out_end))
 				paletteIndex = PaletteIndex::Identifier;
@@ -3559,7 +3577,38 @@ auto TextEditor::LanguageDefinition::CreateLua4() -> LanguageDefinition
 	}
 	langDef.mIdentifiers["PI"s].mDeclaration = "Built-in variable";
 
-	langDef.mTokenize = []
+	auto const tokenizeEmpty = []
+	(
+		char const* inBegin, char const* inEnd,
+		char const*& outBegin, char const*& outEnd
+	)
+	{
+		if (inBegin == inEnd)
+		{
+			outBegin = inEnd;
+			outEnd = inEnd;
+			return true;
+		}
+		return false;
+	};
+	auto const tokenizeString = [inString = false]
+	(
+		char const* inBegin, char const* inEnd,
+		char const*& outBegin, char const*& outEnd
+	) mutable -> bool
+	{
+		return TokenizeLuaStyleString(inBegin, inEnd, outBegin, outEnd, inString);
+	};
+	using TokenizerData = std::pair<std::function<decltype(TokenizeLuaStyleIdentifier)>, PaletteIndex>;
+	auto list = std::vector<TokenizerData>
+	{
+		{ tokenizeEmpty, PaletteIndex::Default },
+		{ tokenizeString, PaletteIndex::String },
+		{ TokenizeLuaStyleIdentifier, PaletteIndex::Identifier },
+		{ TokenizeLuaStyleNumber, PaletteIndex::Number },
+		{ TokenizeLuaStylePunctuation, PaletteIndex::Punctuation },
+	};
+	langDef.mTokenize = [list = std::move(list)]
 	(
 		char const* inBegin, char const* inEnd,
 		char const*& outBegin, char const*& outEnd,
@@ -3572,30 +3621,7 @@ auto TextEditor::LanguageDefinition::CreateLua4() -> LanguageDefinition
 		{
 			++inBegin;
 		}
-
-		decltype(&TokenizeLuaStyleString) tokenizeEmpty = []
-		(
-			char const* inBegin, char const* inEnd,
-			char const*& outBegin, char const*& outEnd
-		)
-		{
-			if (inBegin == inEnd)
-			{
-				outBegin = inEnd;
-				outEnd = inEnd;
-				return true;
-			}
-			return false;
-		};
-
-		auto const list =
-		{
-			std::pair{tokenizeEmpty, PaletteIndex::Default},
-			std::pair{TokenizeLuaStyleString, PaletteIndex::String},
-			std::pair{TokenizeLuaStyleIdentifier, PaletteIndex::Identifier},
-			std::pair{TokenizeLuaStyleNumber, PaletteIndex::Number},
-			std::pair{TokenizeLuaStyleNumber, PaletteIndex::Punctuation},
-		};
+		
 		for (auto const [tokenizer, tokenPalette] : list)
 		{
 			if (tokenizer(inBegin, inEnd, outBegin, outEnd))

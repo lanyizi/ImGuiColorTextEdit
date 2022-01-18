@@ -166,7 +166,7 @@ public:
 		char mPreprocChar;
 		bool mAutoIndentation;
 
-		TokenizeCallback mTokenize;
+		std::function<std::remove_pointer_t<TokenizeCallback>> mTokenize;
 
 		TokenRegexStrings mTokenRegexStrings;
 
