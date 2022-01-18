@@ -3842,8 +3842,8 @@ void TextEditor::DrawAutoComplete(ImVec2 position)
 
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0);
 	ImGui::SetNextWindowPos(position);
-	auto const width = 200;
-	auto const height = mCharAdvance.y * std::min(6u, mAutoCompleteSuggestions.size() + 1);
+	auto const width = 400;
+	auto const height = mCharAdvance.y * std::min(9u, mAutoCompleteSuggestions.size() + 1);
 	ImGui::SetNextWindowSize({ width, height });
 
 	auto const flags =
